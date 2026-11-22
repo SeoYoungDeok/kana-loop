@@ -1,0 +1,22 @@
+{
+  "name": "kana-loop",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build && node src/pwa/build.mjs",
+    "preview": "vite preview",
+    "test:browser": "npm run build && node --experimental-strip-types --test tests/browser.test.mjs",
+    "test": "node --disable-warning=ExperimentalWarning --experimental-strip-types --test tests/*.test.ts"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "^6.2.0",
+    "playwright": "^1.65.1",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.0"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  }
+}
