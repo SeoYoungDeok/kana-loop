@@ -79,12 +79,20 @@ test('production browser flow preserves quiz, backup and offline data across an 
   await page.getByRole('link', { name: '정답표' }).click();
   await page.getByRole('heading', { name: '가나 정답표' }).waitFor();
   await assertText(page, '#answer-count', '208자');
-  const listed = await page.locator('#answer-tables tbody tr').evaluateAll((rows) =>
-    rows.flatMap((row) => {
-      const [hiragana, katakana, korean, romaji] = row.cells;
-      return [hiragana, katakana].map((glyph) => {
-        const readings = [korean, romaji].map((cell) => [cell.querySelector('strong').textContent,
-          ...(cell.querySelector('.reading-variants')?.textContent.split(', ') ?? [])]);
+  const firstGrid = page.getByRole('list', { name: '청음', exact: true });
+  const columns = () => firstGrid.evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.split(' ').length);
+  assert.equal(await columns(), 4);
+  await page.setViewportSize({ width: 390, height: 800 });
+  assert.equal(await columns(), 2);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const listed = await page.locator('#answer-grids .answer-card').evaluateAll((cards) =>
+    cards.flatMap((card) => {
+      return [...card.querySelectorAll('.answer-glyphs span')].map((glyph) => {
+        const readings = ['ko', 'romaji'].map((language) => {
+          const reading = card.querySelector(`[data-reading="${language}"]`);
+          return [reading.querySelector('strong').textContent,
+            ...(reading.querySelector('.reading-variants')?.textContent.split(', ') ?? [])];
+        });
         return [glyph.textContent, ...readings];
       });
     }));
@@ -95,11 +103,11 @@ test('production browser flow preserves quiz, backup and offline data across an 
   }
   const inputSearch = page.getByRole('searchbox', { name: '가나 또는 발음 검색' });
   await inputSearch.fill('  TU ');
-  const tsu = page.locator('#answer-tables tr:visible').filter({ hasText: 'つ' });
+  const tsu = page.locator('#answer-grids .answer-card:visible').filter({ hasText: 'つ' });
   assert.match(await tsu.textContent(), /つツ쓰\s*츠tsu\s*tu/);
   await inputSearch.fill('キャ');
   await assertText(page, '#answer-count', '2자');
-  await assertText(page, '.answer-section:not([hidden]) tbody tr:not([hidden])', 'きゃ');
+  await assertText(page, '.answer-section:not([hidden]) .answer-card:not([hidden])', 'きゃ');
   await inputSearch.fill('no-matches-127');
   await page.getByText('검색 결과가 없습니다.').waitFor();
   await page.goBack();
