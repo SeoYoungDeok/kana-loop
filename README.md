@@ -25,12 +25,16 @@ npm run test:browser
 
 ## 빌드와 배포
 
+[Kana Loop 열기](https://seoyoungdeok.github.io/kana-loop/)
+
+`main`에 `git push`하면 GitHub Actions가 테스트와 빌드를 실행한 뒤 `dist/`를 자동 배포합니다. 진행 상태는 저장소의 [Actions 탭](https://github.com/SeoYoungDeok/kana-loop/actions)에서 확인할 수 있습니다.
+
 ```sh
 npm run build
 npm run preview
 ```
 
-빌드 결과는 `dist/`에 생성됩니다. Cloudflare Pages 등 정적 호스팅에서 빌드 명령을 `npm run build`, 출력 디렉터리를 `dist`로 지정합니다. 오프라인 기능은 프로덕션 빌드를 HTTPS 또는 localhost에서 열고 캐시가 준비된 뒤 사용할 수 있습니다.
+오프라인 기능은 프로덕션 빌드를 HTTPS 또는 localhost에서 열고 캐시가 준비된 뒤 사용할 수 있습니다.
 
 진도는 현재 사이트 주소의 브라우저 프로필에 저장됩니다. 사이트 주소나 브라우저를 바꿀 때는 설정의 JSON 내보내기와 가져오기를 사용합니다.
 
