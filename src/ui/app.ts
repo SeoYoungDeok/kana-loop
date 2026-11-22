@@ -7,9 +7,11 @@ import {
 } from '../engine/engine.ts';
 import { createBackup, parseBackup } from '../storage/backup.ts';
 import { claimWriter, loadState, openDatabase, saveState, StaleStateError } from '../storage/database.ts';
+import { mountAnswerKey } from './answer-key.ts';
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 const button = (id: string) => el<HTMLButtonElement>(id);
+const showingAnswers = () => location.hash === '#answers';
 const scriptLabel = { hiragana: '히라가나', katakana: '가타카나' };
 const categoryLabel = { basic: '청음', voiced: '탁음', semi: '반탁음', contracted: '요음' };
 const rowLabels = ['あ', 'か', 'さ', 'た', 'な', 'は', 'ま', 'や', 'ら', 'わ', 'ん'];
@@ -66,6 +68,8 @@ export async function startApp(catalog: Kana[]): Promise<void> {
   let question: Question | null = null;
   let busy = true;
   let writable = false;
+  let referenceOnly = showingAnswers();
+  let releaseWriter: (() => void) | undefined;
   let errorAction: (() => Promise<void>) | null = null;
   let failed = false;
   let composing = false;
@@ -80,6 +84,7 @@ export async function startApp(catalog: Kana[]): Promise<void> {
   let pendingConfirmation: (() => Promise<void>) | null = null;
 
   mountFilterControls();
+  mountAnswerKey(catalog, categoryLabel);
 
   function status(message: string): void {
     const box = el('global-status');
@@ -88,7 +93,7 @@ export async function startApp(catalog: Kana[]): Promise<void> {
   }
 
   function focusAnswer(): void {
-    if (page === 'quiz' && writable && !failed && !confirmation.open) {
+    if (page === 'quiz' && !showingAnswers() && writable && !failed && !confirmation.open) {
       if (question) answer.focus();
       else el('empty-message').focus();
     }
@@ -158,6 +163,7 @@ export async function startApp(catalog: Kana[]): Promise<void> {
   }
 
   function render(): void {
+    const visiblePage = showingAnswers() ? 'answers' : page;
     const pool = questionPool(catalog, state);
     const today = state.dailyStats[localDate(new Date())];
     const blocked = busy || failed || !writable;
@@ -166,9 +172,11 @@ export async function startApp(catalog: Kana[]): Promise<void> {
     el('today-count').textContent = `${today?.attempts ?? 0}문항`;
     el('today-accuracy').textContent = accuracy(today);
     el('streak').textContent = String(state.appMeta.streak);
-    for (const section of ['quiz', 'settings', 'stats']) el(section).hidden = page !== section;
+    for (const section of ['quiz', 'settings', 'stats', 'answers']) el(section).hidden = visiblePage !== section;
+    if (visiblePage === 'answers') el('answers-link').setAttribute('aria-current', 'page');
+    else el('answers-link').removeAttribute('aria-current');
     for (const control of document.querySelectorAll<HTMLElement>('[data-page]')) {
-      if (control.dataset.page === page) control.setAttribute('aria-current', 'page');
+      if (control.dataset.page === visiblePage) control.setAttribute('aria-current', 'page');
       else control.removeAttribute('aria-current');
     }
 
@@ -208,7 +216,7 @@ export async function startApp(catalog: Kana[]): Promise<void> {
       delete feedbackBox.dataset.kind;
     }
 
-    if (page === 'settings') {
+    if (visiblePage === 'settings') {
       for (const input of document.querySelectorAll<HTMLInputElement>('#filter-groups input')) {
         const values: readonly string[] = state.settings.filters[input.name as typeof groups[number]['key']];
         input.checked = values.includes(input.value);
@@ -234,7 +242,7 @@ export async function startApp(catalog: Kana[]): Promise<void> {
       el('storage-status').textContent = persistent ? '브라우저 저장 유지 허용됨' : '이 브라우저에 저장';
     }
 
-    if (page === 'stats') renderStats(pool);
+    if (visiblePage === 'stats') renderStats(pool);
   }
 
   async function run(action: () => Promise<void>, refocus = false): Promise<void> {
@@ -270,11 +278,33 @@ export async function startApp(catalog: Kana[]): Promise<void> {
   }
 
   function navigate(nextPage: Page): void {
-    if (busy || failed || nextPage === page) return;
+    if (busy) return;
+    if (showingAnswers()) {
+      history.replaceState(history.state, '', location.pathname + location.search);
+      render();
+    }
+    if (referenceOnly) {
+      void run(async () => {
+        db?.close();
+        await initialize(nextPage);
+        referenceOnly = false;
+        if (nextPage !== 'quiz') {
+          render();
+          el(`${nextPage}-title`).focus();
+        }
+      }, nextPage === 'quiz');
+      return;
+    }
+    const needsQuestion = nextPage === 'quiz' && writable && !question && questionPool(catalog, state).length > 0;
+    if (failed || (nextPage === page && !needsQuestion)) {
+      focusAnswer();
+      return;
+    }
     status(writable ? '' : '다른 탭에서 학습 중입니다. 이 탭에서 학습하려면 다른 탭을 닫고 새로고침해 주세요.');
     if (!writable) {
       page = nextPage;
       render();
+      if (page !== 'quiz') el(`${page}-title`).focus();
       return;
     }
     void run(async () => {
@@ -403,6 +433,12 @@ export async function startApp(catalog: Kana[]): Promise<void> {
       navigate(control.dataset.page as Page);
     });
   }
+  window.addEventListener('hashchange', () => {
+    render();
+    if (showingAnswers()) el('answers-title').focus();
+    else if (page === 'quiz' || referenceOnly) navigate(page);
+    else el(`${page}-title`).focus();
+  });
   el('answer-form').addEventListener('submit', (event) => {
     event.preventDefault();
     respond();
@@ -425,7 +461,7 @@ export async function startApp(catalog: Kana[]): Promise<void> {
     }
   });
   document.addEventListener('keydown', (event) => {
-    if (page !== 'quiz' || confirmation.open || event.defaultPrevented
+    if (page !== 'quiz' || showingAnswers() || confirmation.open || event.defaultPrevented
       || event.isComposing || event.keyCode === 229 || composing || justComposed) return;
     const target = event.target;
     const quizTarget = target === answer || target === document.body
@@ -526,38 +562,42 @@ export async function startApp(catalog: Kana[]): Promise<void> {
     if (confirmation.returnValue === 'confirm' && action && !failed && !busy) void run(action);
   });
 
-  async function initialize(): Promise<void> {
-    const writer = await claimWriter();
+  async function initialize(requestedPage?: Page): Promise<void> {
+    const writer = referenceOnly && !requestedPage ? null : await claimWriter();
     try {
       db = await openDatabase();
       ({ state, revision } = await loadState(db));
-      writable = writer.writable;
-      page = state.settings.lastPage;
-      if (!writable) {
+      writable = writer?.writable ?? false;
+      page = requestedPage ?? state.settings.lastPage;
+      if (writer && !writable) {
         status('다른 탭에서 학습 중입니다. 이 탭에서 학습하려면 다른 탭을 닫고 새로고침해 주세요.');
-        page = 'stats';
-      } else if (page === 'quiz') {
+        page = requestedPage ?? 'stats';
+      } else if (writable && (page === 'quiz' || page !== state.settings.lastPage)) {
         const next = structuredClone(state);
-        const starting = addQuestion(next);
-        if (starting) await commit(next);
+        next.settings.lastPage = page;
+        const starting = page === 'quiz' && !showingAnswers() ? addQuestion(next) : null;
+        if (starting || page !== state.settings.lastPage) await commit(next);
         setQuestion(starting);
       }
       storageSupported = typeof navigator.storage?.persist === 'function';
       if (navigator.storage?.persisted) persistent = await navigator.storage.persisted().catch(() => false);
-      window.addEventListener('pagehide', (event) => {
-        if (!(event as PageTransitionEvent).persisted) {
-          db.close();
-          writer.release();
-        }
-      }, { once: true });
+      releaseWriter = writer?.release;
     } catch (error) {
-      writer.release();
+      writer?.release();
       db?.close();
       writable = false;
       throw error;
     }
   }
 
+  window.addEventListener('pagehide', (event) => {
+    if (!event.persisted) {
+      db?.close();
+      releaseWriter?.();
+    }
+  });
+
   busy = false;
   await run(initialize, true);
+  if (showingAnswers()) el('answers-title').focus();
 }

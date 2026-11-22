@@ -60,8 +60,13 @@ test('production browser flow preserves quiz, backup and offline data across an 
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
 
+  const directReference = await context.newPage();
+  await directReference.goto(base + '#answers');
+  await assertText(directReference, '#answer-count', '208자');
+  await waitReady(directReference);
   await page.goto(base);
   await waitReady(page);
+  await directReference.close();
   const answer = page.locator('#answer');
   const kana = page.locator('#question-kana');
   const initialKana = await kana.textContent();
@@ -69,6 +74,39 @@ test('production browser flow preserves quiz, backup and offline data across an 
   const layout = await page.locator('.prompt-card').boundingBox();
   assert.equal(layout.width, 600);
   assert.equal(layout.x, 340);
+
+  await answer.fill('draft');
+  await page.getByRole('link', { name: '정답표' }).click();
+  await page.getByRole('heading', { name: '가나 정답표' }).waitFor();
+  await assertText(page, '#answer-count', '208자');
+  const listed = await page.locator('#answer-tables tbody tr').evaluateAll((rows) =>
+    rows.flatMap((row) => {
+      const [hiragana, katakana, korean, romaji] = row.cells;
+      return [hiragana, katakana].map((glyph) => {
+        const readings = [korean, romaji].map((cell) => [cell.querySelector('strong').textContent,
+          ...(cell.querySelector('.reading-variants')?.textContent.split(', ') ?? [])]);
+        return [glyph.textContent, ...readings];
+      });
+    }));
+  assert.equal(listed.length, answers.size);
+  for (const [glyph, korean, romaji] of listed) {
+    assert.deepEqual(korean, answers.get(glyph).acceptedKo);
+    assert.deepEqual(romaji, answers.get(glyph).acceptedRomaji);
+  }
+  const inputSearch = page.getByRole('searchbox', { name: '가나 또는 발음 검색' });
+  await inputSearch.fill('  TU ');
+  const tsu = page.locator('#answer-tables tr:visible').filter({ hasText: 'つ' });
+  assert.match(await tsu.textContent(), /つツ쓰\s*츠tsu\s*tu/);
+  await inputSearch.fill('キャ');
+  await assertText(page, '#answer-count', '2자');
+  await assertText(page, '.answer-section:not([hidden]) tbody tr:not([hidden])', 'きゃ');
+  await inputSearch.fill('no-matches-127');
+  await page.getByText('검색 결과가 없습니다.').waitFor();
+  await page.goBack();
+  await answer.waitFor();
+  assert.equal(await kana.textContent(), initialKana);
+  assert.equal(await answer.inputValue(), 'draft');
+  await answer.fill('');
   await answer.press('Enter');
   await assertText(page, '#today-count', '0문항');
 
@@ -147,6 +185,11 @@ test('production browser flow preserves quiz, backup and offline data across an 
 
   await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
   await context.setOffline(true);
+  const offlineReference = await context.newPage();
+  await offlineReference.goto(base + '#answers');
+  await offlineReference.getByRole('heading', { name: '가나 정답표' }).waitFor();
+  await assertText(offlineReference, '#answer-count', '208자');
+  await offlineReference.close();
   await page.reload();
   await answer.waitFor();
   await assertText(page, '#today-count', '1문항');

@@ -21,6 +21,7 @@
           <span>오늘</span><strong id="today-count">0문항</strong><span class="today-divider" aria-hidden="true"></span><strong id="today-accuracy">—</strong>
         </div>
         <nav aria-label="메인 메뉴">
+          <a class="page-link" id="answers-link" href="#answers">정답표</a>
           <button type="button" data-page="stats">통계</button>
           <button type="button" data-page="settings">설정</button>
         </nav>
@@ -106,6 +107,21 @@
               </table>
             </div>
           </div>
+        </section>
+        <section id="answers" class="subpage" aria-labelledby="answers-title" hidden>
+          <div class="page-heading">
+            <h1 id="answers-title" tabindex="-1">가나 정답표</h1>
+            <button type="button" data-page="quiz">연습으로</button>
+          </div>
+          <div class="answer-lookup">
+            <label for="answer-search">가나 또는 발음 검색</label>
+            <div class="answer-search-field">
+              <input type="search" id="answer-search" placeholder="예: し, 시, shi" autocomplete="off" spellcheck="false">
+              <span id="answer-count" class="count-pill" role="status"></span>
+            </div>
+          </div>
+          <div id="answer-tables"></div>
+          <p id="answer-empty" class="empty-card" hidden>검색 결과가 없습니다.</p>
         </section>
       </main>
     </div>
