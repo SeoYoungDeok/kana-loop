@@ -23,7 +23,7 @@ const groups = [
 ] as const;
 
 type Page = Settings['lastPage'];
-type Feedback = { kind: 'correct' | 'wrong'; kana: Kana } | null;
+type Feedback = { kind: 'correct' } | { kind: 'wrong'; kana: Kana; answer: string } | null;
 
 function accuracy(counts?: Pick<Counts, 'attempts' | 'correct'>): string {
   return counts?.attempts ? `${Math.round(100 * counts.correct / counts.attempts)}%` : '—';
@@ -167,7 +167,6 @@ export async function startApp(catalog: Kana[]): Promise<void> {
     const pool = questionPool(catalog, state);
     const today = state.dailyStats[localDate(new Date())];
     const blocked = busy || failed || !writable;
-    const wrong = feedback?.kind === 'wrong';
     main.setAttribute('aria-busy', String(busy));
     el('today-count').textContent = `${today?.attempts ?? 0}문항`;
     el('today-accuracy').textContent = accuracy(today);
@@ -192,22 +191,26 @@ export async function startApp(catalog: Kana[]): Promise<void> {
       el('question-category').textContent = `${scriptLabel[kana.script]} · ${categoryLabel[kana.category]}${question.review ? ' · 복습' : ''}`;
       el('question-pool').textContent = `${pool.length}문항 범위`;
     }
-    answer.readOnly = blocked || wrong;
-    button('submit-answer').textContent = wrong ? '다음' : '제출';
+    answer.readOnly = blocked;
     button('submit-answer').disabled = blocked || !question;
     if (feedback) {
-      const { kana, kind } = feedback;
+      const { kind } = feedback;
       const line = document.createElement('p');
       const title = document.createElement('strong');
       title.textContent = kind === 'correct' ? '정답' : '오답';
-      line.append(title, kind === 'correct' ? '' : ` · 정답 ${kana.primaryKo} / ${kana.primaryRomaji}`);
+      line.append(title);
       feedbackBox.replaceChildren(line);
       if (kind === 'wrong') {
+        const { kana, answer: submitted } = feedback;
+        const previousKana = document.createElement('span');
+        previousKana.lang = 'ja';
+        previousKana.textContent = kana.kana;
+        line.append(' · ', previousKana, ` 정답 ${kana.primaryKo} / ${kana.primaryRomaji}`);
         const details = document.createElement('p');
         const alternatives = [...kana.acceptedKo.filter((item) => item !== kana.primaryKo),
           ...kana.acceptedRomaji.filter((item) => item !== kana.primaryRomaji)];
         details.className = 'details';
-        details.textContent = `내 답안 ${answer.value}${alternatives.length ? ` · 허용 표기 ${alternatives.join(', ')}` : ''}`;
+        details.textContent = `내 답안 ${submitted}${alternatives.length ? ` · 허용 표기 ${alternatives.join(', ')}` : ''}`;
         feedbackBox.append(details);
       }
       feedbackBox.dataset.kind = kind;
@@ -322,22 +325,8 @@ export async function startApp(catalog: Kana[]): Promise<void> {
     }, nextPage === 'quiz');
   }
 
-  function advance(): void {
-    if (page !== 'quiz' || busy || failed || !writable || feedback?.kind !== 'wrong') return;
-    void run(async () => {
-      const next = structuredClone(state);
-      const nextQuestion = addQuestion(next);
-      if (nextQuestion) await commit(next);
-      setQuestion(nextQuestion);
-    }, true);
-  }
-
   function respond(skip = false): void {
     if (page !== 'quiz' || busy || failed || !writable || !question || composing || justComposed) return;
-    if (feedback?.kind === 'wrong') {
-      if (!skip) advance();
-      return;
-    }
     const displayed = question;
     const kana = byId.get(displayed.id)!;
     const input = answer.value;
@@ -347,13 +336,13 @@ export async function startApp(catalog: Kana[]): Promise<void> {
     const previous = structuredClone(state);
     const next = structuredClone(state);
     recordResult(next, displayed, result, now);
-    const upcoming = result === false ? null : addQuestion(next);
+    const upcoming = addQuestion(next);
     void run(async () => {
       await commit(next);
-      if (result !== false) setQuestion(upcoming);
-      else answer.value = input;
+      setQuestion(upcoming);
       undo = result === 'skip' ? null : { state: previous, question: displayed, answer: input };
-      feedback = result === 'skip' ? null : { kind: result ? 'correct' : 'wrong', kana };
+      if (result === true) feedback = { kind: 'correct' };
+      if (result === false) feedback = { kind: 'wrong', kana, answer: input };
     }, true);
   }
 
@@ -455,9 +444,10 @@ export async function startApp(catalog: Kana[]): Promise<void> {
   });
   answer.addEventListener('input', () => {
     editingAnswer = true;
-    if (feedback?.kind === 'correct') {
+    if (feedback) {
       feedback = null;
       feedbackBox.replaceChildren();
+      delete feedbackBox.dataset.kind;
     }
   });
   document.addEventListener('keydown', (event) => {
@@ -471,7 +461,7 @@ export async function startApp(catalog: Kana[]): Promise<void> {
       event.preventDefault();
       if (!event.repeat) respond(event.key === 'Escape');
     } else if (undo && !busy && !failed && (event.ctrlKey || event.metaKey) && !event.shiftKey
-      && !event.altKey && event.key.toLowerCase() === 'z' && (feedback?.kind === 'wrong' || !editingAnswer)) {
+      && !event.altKey && event.key.toLowerCase() === 'z' && !editingAnswer) {
       event.preventDefault();
       if (!event.repeat) undoAnswer();
     }
