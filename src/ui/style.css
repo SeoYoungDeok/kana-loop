@@ -124,6 +124,7 @@ td:first-child { font-size: 1rem; font-weight: 650; }
 
 .status, .error-panel { padding: 10px 13px; border-radius: 7px; font-size: .875rem; }
 .status { background: var(--tint); margin: 10px 0 0; }
+.app-update { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .error-panel { margin-top: 10px; background: #faeae6; color: var(--error); }
 .error-panel p { margin: 0 0 8px; }
 dialog { color: inherit; width: min(100% - 32px, 420px); border: 1px solid var(--border); border-radius: 14px; padding: 22px; }

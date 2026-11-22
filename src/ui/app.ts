@@ -75,6 +75,7 @@ export async function startApp(catalog: Kana[]): Promise<void> {
   let composing = false;
   let editingAnswer = false;
   let justComposed = false;
+  let submitAfterComposition = false;
   let compositionTimer = 0;
   let feedback: Feedback = null;
   let undo: { state: State; question: Question; answer: string } | null = null;
@@ -435,13 +436,21 @@ export async function startApp(catalog: Kana[]): Promise<void> {
   answer.addEventListener('compositionstart', () => {
     composing = true;
     justComposed = false;
+    submitAfterComposition = false;
     clearTimeout(compositionTimer);
   });
   answer.addEventListener('compositionend', () => {
     composing = false;
     justComposed = true;
-    compositionTimer = window.setTimeout(() => { justComposed = false; }, 0);
+    // Wait for the browser to write the committed text into the input.
+    compositionTimer = window.setTimeout(() => {
+      justComposed = false;
+      const submit = submitAfterComposition;
+      submitAfterComposition = false;
+      if (submit && document.activeElement === answer && !showingAnswers()) respond();
+    }, 0);
   });
+  answer.addEventListener('blur', () => { submitAfterComposition = false; });
   answer.addEventListener('input', () => {
     editingAnswer = true;
     if (feedback) {
@@ -451,13 +460,23 @@ export async function startApp(catalog: Kana[]): Promise<void> {
     }
   });
   document.addEventListener('keydown', (event) => {
-    if (page !== 'quiz' || showingAnswers() || confirmation.open || event.defaultPrevented
-      || event.isComposing || event.keyCode === 229 || composing || justComposed) return;
+    if (page !== 'quiz' || showingAnswers() || confirmation.open || event.defaultPrevented) return;
     const target = event.target;
+    const enter = event.key === 'Enter';
+    if (event.isComposing || event.keyCode === 229 || composing || justComposed) {
+      if (target === answer && (composing || justComposed) && !event.repeat) {
+        submitAfterComposition = enter || event.code === 'Enter' || event.code === 'NumpadEnter';
+        // Let the IME finish its own composition, but suppress a subsequent form submit.
+        if (submitAfterComposition && !composing && !event.isComposing && event.keyCode !== 229) {
+          event.preventDefault();
+        }
+      }
+      return;
+    }
     const quizTarget = target === answer || target === document.body
       || target === button('submit-answer') || target === el('empty-message');
     if (!quizTarget) return;
-    if (question && (event.key === 'Enter' || event.key === 'Escape')) {
+    if (question && (enter || event.key === 'Escape')) {
       event.preventDefault();
       if (!event.repeat) respond(event.key === 'Escape');
     } else if (undo && !busy && !failed && (event.ctrlKey || event.metaKey) && !event.shiftKey

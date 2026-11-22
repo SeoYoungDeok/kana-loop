@@ -1,14 +1,18 @@
 const version = /* CACHE_VERSION */ "";
 const precache = /* PRECACHE */ [];
-const scope = self.registration.scope;
+const root = new URL(self.registration.scope);
+const scope = root.href;
 const prefix = `kana-loop:${scope}:`;
 const cacheName = prefix + version;
-const index = new URL('./index.html', scope).href;
+const index = new URL('./index.html', scope);
 const cachedUrls = new Set(precache.map((path) => new URL(path, scope).href));
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(cacheName).then((cache) =>
-    cache.addAll([...cachedUrls].map((url) => new Request(url, { cache: 'reload' })))));
+  event.waitUntil((async () => {
+    const cache = await caches.open(cacheName);
+    await cache.addAll([...cachedUrls].map((url) => new Request(url, { cache: 'reload' })));
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (event) => {
@@ -30,9 +34,8 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET' || !request.url.startsWith(scope)) return;
 
   const url = new URL(request.url);
-  const root = new URL(scope);
-  if (request.mode === 'navigate' && (url.pathname === root.pathname || url.href === index)) {
-    event.respondWith(serve(request, index));
+  if (request.mode === 'navigate' && (url.pathname === root.pathname || url.pathname === index.pathname)) {
+    event.respondWith(serve(request, index.href));
   } else if (cachedUrls.has(request.url)) {
     event.respondWith(serve(request, request.url));
   }

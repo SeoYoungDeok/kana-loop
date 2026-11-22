@@ -118,16 +118,19 @@ test('production browser flow preserves quiz, backup and offline data across an 
   await answer.press('Enter');
   await assertText(page, '#today-count', '0문항');
 
-  await answer.fill(answers.get(initialKana).primaryKo);
-  await answer.dispatchEvent('compositionstart');
-  await answer.press('Enter');
+  const ime = await context.newCDPSession(page);
+  await ime.send('Input.imeSetComposition', { text: 'ㅎ', selectionStart: 1, selectionEnd: 1 });
+  await ime.send('Input.insertText', { text: '하' });
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 0)));
+  await assertText(page, '#today-count', '0문항');
+  await answer.fill('');
+  await ime.send('Input.imeSetComposition', { text: 'ㅎ', selectionStart: 1, selectionEnd: 1 });
+  assert.equal(await answer.inputValue(), 'ㅎ');
+  await page.keyboard.down('Enter');
+  await page.keyboard.down('Enter');
   await assertText(page, '#today-count', '0문항');
   assert.equal(await kana.textContent(), initialKana);
-  await answer.dispatchEvent('compositionend');
-  // A separate physical keypress lands after the composition commit event turn.
-  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 0)));
-  await page.keyboard.down('Enter');
-  await page.keyboard.down('Enter');
+  await ime.send('Input.insertText', { text: answers.get(initialKana).primaryKo });
   await page.keyboard.up('Enter');
   await assertText(page, '#today-count', '1문항');
   await assertText(page, '#feedback', '정답');
@@ -202,7 +205,7 @@ test('production browser flow preserves quiz, backup and offline data across an 
   await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
   await context.setOffline(true);
   const offlineReference = await context.newPage();
-  await offlineReference.goto(base + '#answers');
+  await offlineReference.goto(base + 'index.html?latest=1#answers');
   await offlineReference.getByRole('heading', { name: '가나 정답표' }).waitFor();
   await assertText(offlineReference, '#answer-count', '208자');
   await offlineReference.close();
@@ -220,11 +223,11 @@ test('production browser flow preserves quiz, backup and offline data across an 
     const registration = await navigator.serviceWorker.ready;
     await registration.update();
   });
-  await page.waitForFunction(async () => Boolean((await navigator.serviceWorker.ready).waiting));
-  await page.close();
-  const afterUpdate = await context.newPage();
-  await afterUpdate.goto(base);
-  await afterUpdate.waitForFunction(() => document.title === 'Kana Loop • update');
-  await assertText(afterUpdate, '#today-count', '2문항');
+  const applyUpdate = page.getByRole('button', { name: '새 버전 적용' });
+  await applyUpdate.waitFor();
+  assert.equal(await page.title(), 'Kana Loop');
+  await applyUpdate.click();
+  await page.waitForFunction(() => document.title === 'Kana Loop • update');
+  await assertText(page, '#today-count', '2문항');
   assert.deepEqual(errors, []);
 });
