@@ -1,8 +1,9 @@
-import { categories, normalizeAnswer, type Category, type Kana } from '../catalog/catalog.ts';
+import { categories, normalizeAnswer, vowels, type Category, type Kana } from '../catalog/catalog.ts';
 
 interface AnswerPair {
   hiragana?: string;
   katakana?: string;
+  row: string;
   reading: Kana;
 }
 
@@ -24,6 +25,32 @@ function renderReading(language: 'ko' | 'romaji', primary: string, accepted: rea
   return reading;
 }
 
+function renderCard({ hiragana, katakana, reading }: AnswerPair) {
+  const card = document.createElement('li');
+  card.className = 'answer-card';
+  card.style.gridColumnStart = String(reading.dan === 'none' ? 1 : vowels.indexOf(reading.dan) + 1);
+  const glyphs = document.createElement('div');
+  glyphs.className = 'answer-glyphs';
+  for (const glyph of [hiragana, katakana].filter((glyph) => glyph !== undefined)) {
+    const character = document.createElement('span');
+    character.lang = 'ja';
+    character.textContent = glyph;
+    glyphs.append(character);
+  }
+  const readings = document.createElement('div');
+  readings.className = 'answer-readings';
+  readings.append(
+    renderReading('ko', reading.primaryKo, reading.acceptedKo),
+    renderReading('romaji', reading.primaryRomaji, reading.acceptedRomaji),
+  );
+  card.append(glyphs, readings);
+  return {
+    card,
+    glyphCount: glyphs.childElementCount,
+    terms: [hiragana ?? '', katakana ?? '', ...reading.acceptedKo, ...reading.acceptedRomaji].map(normalizeAnswer),
+  };
+}
+
 export function mountAnswerKey(catalog: readonly Kana[], labels: Record<Category, string>): void {
   const search = document.querySelector<HTMLInputElement>('#answer-search')!;
   const count = document.getElementById('answer-count')!;
@@ -35,7 +62,9 @@ export function mountAnswerKey(catalog: readonly Kana[], labels: Record<Category
     // Corresponding katakana and hiragana differ by 0x60 in the kana block.
     const hiragana = kana.kana.replace(/[ァ-ヶ]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0x60));
     const key = JSON.stringify([kana.category, hiragana, kana.primaryKo, kana.acceptedKo, kana.primaryRomaji, kana.acceptedRomaji]);
-    const pair = pairs.get(key) ?? { reading: kana };
+    // Contracted sounds with the same row code can have different leading kana.
+    const row = kana.category === 'contracted' ? hiragana[0] : kana.gyou;
+    const pair = pairs.get(key) ?? { reading: kana, row };
     pair[kana.script] = kana.kana;
     pairs.set(key, pair);
   }
@@ -46,51 +75,43 @@ export function mountAnswerKey(catalog: readonly Kana[], labels: Record<Category
     const title = document.createElement('h2');
     title.id = `answer-category-${category}`;
     title.textContent = labels[category];
-    const grid = document.createElement('ul');
-    grid.className = 'answer-grid';
-    grid.setAttribute('role', 'list');
-    grid.setAttribute('aria-labelledby', title.id);
+    section.setAttribute('aria-labelledby', title.id);
+    section.append(title);
 
-    const entries = [...pairs.values()].filter(({ reading }) => reading.category === category)
-      .map(({ hiragana, katakana, reading }) => {
-        const card = document.createElement('li');
-        card.className = 'answer-card';
-        const glyphs = document.createElement('div');
-        glyphs.className = 'answer-glyphs';
-        for (const glyph of [hiragana, katakana].filter((glyph) => glyph !== undefined)) {
-          const character = document.createElement('span');
-          character.lang = 'ja';
-          character.textContent = glyph;
-          glyphs.append(character);
-        }
-        const readings = document.createElement('div');
-        readings.className = 'answer-readings';
-        readings.append(
-          renderReading('ko', reading.primaryKo, reading.acceptedKo),
-          renderReading('romaji', reading.primaryRomaji, reading.acceptedRomaji),
-        );
-        card.append(glyphs, readings);
-        grid.append(card);
-        return {
-          card,
-          glyphCount: glyphs.childElementCount,
-          terms: [hiragana ?? '', katakana ?? '', ...reading.acceptedKo, ...reading.acceptedRomaji].map(normalizeAnswer),
-        };
-      });
+    const rowGroups = new Map<string, AnswerPair[]>();
+    for (const pair of pairs.values()) {
+      if (pair.reading.category !== category) continue;
+      const group = rowGroups.get(pair.row);
+      if (group) group.push(pair);
+      else rowGroups.set(pair.row, [pair]);
+    }
 
-    section.append(title, grid);
+    const rows = [...rowGroups.values()].map((group) => {
+      const list = document.createElement('ul');
+      list.className = 'answer-row';
+      list.setAttribute('role', 'list');
+      const entries = group.map(renderCard);
+      list.append(...entries.map(({ card }) => card));
+      section.append(list);
+      return { list, entries };
+    });
     grids.append(section);
-    return { section, entries };
+    return { section, rows };
   });
 
   function updateResults(): void {
     const query = normalizeAnswer(search.value);
     let total = 0;
-    for (const { section, entries } of sections) {
+    for (const { section, rows } of sections) {
       let visible = 0;
-      for (const { card, glyphCount, terms } of entries) {
-        card.hidden = !terms.some((term) => term.includes(query));
-        if (!card.hidden) visible += glyphCount;
+      for (const { list, entries } of rows) {
+        let rowCount = 0;
+        for (const { card, glyphCount, terms } of entries) {
+          card.hidden = !terms.some((term) => term.includes(query));
+          if (!card.hidden) rowCount += glyphCount;
+        }
+        list.hidden = rowCount === 0;
+        visible += rowCount;
       }
       section.hidden = visible === 0;
       total += visible;

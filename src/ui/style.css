@@ -112,9 +112,10 @@ td:first-child { font-size: 1rem; font-weight: 650; }
 .answer-search-field .count-pill { min-width: 64px; text-align: center; white-space: nowrap; }
 #answer-grids { display: grid; gap: 24px; }
 .answer-section h2 { margin-bottom: 10px; }
-.answer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 126px), 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
-.answer-card { min-height: 90px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--paper); text-align: center; }
-.answer-glyphs { display: flex; align-items: baseline; justify-content: center; gap: 6px; min-height: 34px; font-family: "Hiragino Sans", "Yu Gothic", "Meiryo", "Noto Sans CJK JP", sans-serif; font-size: 1.5rem; font-weight: 600; line-height: 1.2; white-space: nowrap; }
+.answer-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 0 0 8px; padding: 0; list-style: none; }
+.answer-row:last-child { margin-bottom: 0; }
+.answer-card { min-height: 90px; padding: 9px 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--paper); text-align: center; }
+.answer-glyphs { display: flex; align-items: baseline; justify-content: center; gap: 5px; min-height: 32px; font-family: "Hiragino Sans", "Yu Gothic", "Meiryo", "Noto Sans CJK JP", sans-serif; font-size: 1.25rem; font-weight: 600; line-height: 1.2; white-space: nowrap; }
 .answer-glyphs span + span { color: var(--accent); }
 .answer-readings { display: grid; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; border-top: 1px solid var(--border); padding-top: 6px; font-size: .9375rem; }
 .answer-reading { padding-inline: 3px; overflow-wrap: anywhere; }
@@ -131,6 +132,15 @@ dialog { color: inherit; width: min(100% - 32px, 420px); border: 1px solid var(-
 dialog::backdrop { background: #18291f75; }
 dialog p { color: var(--muted); line-height: 1.55; }
 .dialog-actions { justify-content: flex-end; }
+
+@media (max-width: 580px) {
+  .answer-row { gap: 4px; margin-bottom: 4px; }
+  .answer-card { padding: 7px 3px; }
+  .answer-glyphs { flex-direction: column; align-items: center; gap: 1px; padding-bottom: 4px; font-size: 1.125rem; }
+  .answer-readings { font-size: .8125rem; }
+  .answer-reading { padding-inline: 1px; }
+  .reading-variants { font-size: .75rem; }
+}
 
 @media (max-width: 540px) {
   .app { width: calc(100% - 24px); }

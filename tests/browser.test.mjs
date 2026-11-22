@@ -79,12 +79,21 @@ test('production browser flow preserves quiz, backup and offline data across an 
   await page.getByRole('link', { name: '정답표' }).click();
   await page.getByRole('heading', { name: '가나 정답표' }).waitFor();
   await assertText(page, '#answer-count', '208자');
-  const firstGrid = page.getByRole('list', { name: '청음', exact: true });
-  const columns = () => firstGrid.evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.split(' ').length);
-  assert.equal(await columns(), 4);
+  const answerRows = page.locator('#answer-grids .answer-row');
+  const columns = () => answerRows.first().evaluate((row) => getComputedStyle(row).gridTemplateColumns.split(' ').length);
+  assert.equal(await columns(), 5);
   await page.setViewportSize({ width: 390, height: 800 });
-  assert.equal(await columns(), 2);
+  assert.equal(await columns(), 5);
   await page.setViewportSize({ width: 1280, height: 800 });
+  const rows = await answerRows.evaluateAll((lists) => lists.map((list) =>
+    [...list.children].map((card) => [card.querySelector('.answer-glyphs span').textContent, Number(card.style.gridColumnStart)])));
+  assert.equal(rows.length, 27);
+  assert.deepEqual(rows[0], [['あ', 1], ['い', 2], ['う', 3], ['え', 4], ['お', 5]]);
+  assert.deepEqual(rows[1], [['か', 1], ['き', 2], ['く', 3], ['け', 4], ['こ', 5]]);
+  assert.deepEqual(rows[7], [['や', 1], ['ゆ', 3], ['よ', 5]]);
+  assert.deepEqual(rows[9], [['わ', 1], ['を', 5]]);
+  assert.deepEqual(rows[16], [['きゃ', 1], ['きゅ', 3], ['きょ', 5]]);
+  assert.deepEqual(rows[17], [['ぎゃ', 1], ['ぎゅ', 3], ['ぎょ', 5]]);
   const listed = await page.locator('#answer-grids .answer-card').evaluateAll((cards) =>
     cards.flatMap((card) => {
       return [...card.querySelectorAll('.answer-glyphs span')].map((glyph) => {
@@ -108,6 +117,7 @@ test('production browser flow preserves quiz, backup and offline data across an 
   await inputSearch.fill('キャ');
   await assertText(page, '#answer-count', '2자');
   await assertText(page, '.answer-section:not([hidden]) .answer-card:not([hidden])', 'きゃ');
+  assert.equal(await page.locator('#answer-grids .answer-row:visible').count(), 1);
   await inputSearch.fill('no-matches-127');
   await page.getByText('검색 결과가 없습니다.').waitFor();
   await page.goBack();
